@@ -1,0 +1,85 @@
+---
+title: "Model based dose recomendation of Bulsalphan First dose in Pediatrics"
+latex_engine: pdflatex
+output:
+  html_document:
+    toc: yes
+    toc_float: yes
+  pdf_document:
+    toc: yes
+pdf_document:
+  includes:
+    in_header: rmd_topdf_styles.sty landscapepage.tex
+header-includes:
+- \usepackage{pdfpages}
+- \usepackage{lscape}
+---
+
+\newcommand{\blandscape}{\begin{landscape}}
+\newcommand{\elandscape}{\end{landscape}}
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message = FALSE, echo = FALSE, warning = FALSE, chunksize = "tiny", tidy = TRUE, tidy.opts = list(width.cutoff = 60))
+knitr::knit_hooks$set(chunksize = function(before, options, envir){
+  if (before) {
+    return(paste0("\n \\", options$chunksize, "\n\n"))
+  } else {
+      return("\n\n \\normalsize \n")
+    } 
+      
+})
+```
+
+
+```{r eval=FALSE}
+#Create project folders
+PKPDmisc::nonmem_report()
+```
+
+```{r}
+#Load libraries and customized user functions
+library(tidyverse)
+library(PKPDmisc)
+library(mrgsolve)
+source("~/Miscellaneous/Shyne/scripts/variance_to_bsv_and_viceversa.r")
+source("~/Miscellaneous/Shyne/scripts/bulsalphan_1cmt_poppkmodel.r")
+source("~/Miscellaneous/Shyne/scripts/plot_theme.r")
+source("~/Miscellaneous/Shyne/scripts/Convert_given_age_into_yrs.r")
+```
+
+
+
+```{r}
+#Simulate dosing design function
+make_design_dataset<-function(DOSE,WT,AGE,AGEUNIT,TAU,DUR){
+  AGE<-calculate_AgeYrs(AGE,AGEUNIT)
+  DUR=DUR*24 #Given duration in days, calculate duration in hrs
+  ADDL=(DUR/TAU)-1
+  dose_design<-expand.ev(ID=1,WT=WT, AGE=AGE, amt=DOSE, ii=TAU, cmt=1, evid=1, time=0, addl=ADDL)
+  return(dose_design)
+}
+
+#Make simulation function
+Simulate_busulphan<-function(DOSE,WT,AGE,AGEUNIT,TAU,DUR){
+  #Compile the model
+  bulsaphan_model<-mread_cache("bulsaphan_model",tempdir(),code)
+  dose_design<-make_design_dataset(DOSE = DOSE, WT=WT, AGE = AGE, AGEUNIT = AGEUNIT, TAU = TAU, DUR = DUR)
+  out<-bulsaphan_model%>%data_set(dose_design)%>%mrgsim(Req=c("CP","CL","VC"), end=168)%>%as.data.frame()
+  return(out)
+}
+
+#Simulate conc profiles for all individuals
+simdata<-Simulate_busulphan(DOSE = 3.6, WT=4.5, AGE = 6, AGEUNIT = "weeks", TAU = 6, DUR = 7)
+
+
+
+###Plot the results
+ggplot(data = simdata, aes(time, CP, group=factor(ID)))+
+  geom_line()+
+  scale_x_continuous(labels = function(x){round(x/24)})+
+  labs(x="Time (days)", y="Bulsalphan concentration (ng/mL)")+
+  plot_theme()+ theme(legend.position = "top", legend.direction = "horizontal")
+```
+```
+
